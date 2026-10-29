@@ -19,12 +19,23 @@
 
       <div class="privacy-note">
         <span class="privacy-dot" aria-hidden="true"></span>
-        Monitors pages you visit. Diagnostics stay on this device.
+        Monitors pages you visit. Diagnostics stay on this device unless you enable the optional AI step.
       </div>
 
       <section class="actions" aria-label="Capture controls">
         <button id="start-capture" class="button button-primary" type="button">Start on this page</button>
         <button id="generate-report" class="button button-secondary" type="button">Generate report</button>
+      </section>
+
+      <section class="ai-settings" aria-label="AI report settings">
+        <label class="ai-toggle">
+          <input id="ai-enabled" type="checkbox" />
+          <span>Improve the report with AI (optional)</span>
+        </label>
+        <div id="ai-fields" class="ai-fields" hidden>
+          <input id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="Anthropic API key (sk-ant-…)" aria-label="Anthropic API key" />
+          <p class="ai-note">Sends the captured errors, failed request URLs, click context, page URL and title to the Anthropic API. The screenshot is never sent. Your key is stored only in this browser.</p>
+        </div>
       </section>
 
       <p id="status" class="status" role="status" aria-live="polite">Ready when you are.</p>

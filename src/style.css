@@ -220,3 +220,38 @@ textarea {
   font-size: 9px;
   line-height: 1.5;
 }
+
+.ai-settings {
+  margin: 12px 0 0;
+}
+
+.ai-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #c9cde0;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.ai-fields {
+  margin-top: 8px;
+}
+
+.ai-fields input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #2c3142;
+  border-radius: 8px;
+  color: #e7eaf1;
+  background: #171b26;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.ai-note {
+  margin: 6px 0 0;
+  color: #9aa0b3;
+  font-size: 11px;
+  line-height: 1.45;
+}

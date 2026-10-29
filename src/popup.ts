@@ -1,4 +1,5 @@
 import "./style.css";
+import { generateAiReport, type AiReport } from "./ai";
 
 type CapturedError = {
   message: string;
@@ -67,6 +68,32 @@ const reportSection = document.querySelector<HTMLElement>("#report-section")!;
 const reportField = document.querySelector<HTMLTextAreaElement>("#report")!;
 const screenshotPreview = document.querySelector<HTMLElement>("#screenshot-preview")!;
 const screenshotImage = document.querySelector<HTMLImageElement>("#screenshot")!;
+const aiEnabled = document.querySelector<HTMLInputElement>("#ai-enabled")!;
+const aiFields = document.querySelector<HTMLElement>("#ai-fields")!;
+const aiKey = document.querySelector<HTMLInputElement>("#ai-key")!;
+
+const AI_ENABLED_KEY = "devlens.ai.enabled";
+const AI_KEY_KEY = "devlens.ai.key";
+
+function loadAiSettings() {
+  try {
+    aiEnabled.checked = localStorage.getItem(AI_ENABLED_KEY) === "1";
+    aiKey.value = localStorage.getItem(AI_KEY_KEY) ?? "";
+  } catch {
+    // storage unavailable: keep defaults
+  }
+  aiFields.hidden = !aiEnabled.checked;
+}
+
+function saveAiSettings() {
+  aiFields.hidden = !aiEnabled.checked;
+  try {
+    localStorage.setItem(AI_ENABLED_KEY, aiEnabled.checked ? "1" : "0");
+    localStorage.setItem(AI_KEY_KEY, aiKey.value.trim());
+  } catch {
+    // ignore storage failures
+  }
+}
 
 function setStatus(message: string, isError = false) {
   status.textContent = message;
@@ -201,10 +228,36 @@ async function generateReport() {
       screenshotPreview.hidden = true;
       downloadScreenshotButton.disabled = true;
     }
-    reportField.value = formatReport(data, Boolean(screenshot));
+    let ai: AiReport | undefined;
+    let aiProblem: string | undefined;
+    const apiKey = aiKey.value.trim();
+    if (aiEnabled.checked) {
+      if (!apiKey) {
+        aiProblem = "AI is enabled but no API key is set.";
+      } else {
+        setStatus("Asking the AI to structure the report…");
+        try {
+          ai = await generateAiReport(
+            {
+              url: data.url,
+              title: data.title,
+              errors: (data.state?.errors ?? []).slice(-20),
+              requests: (data.state?.requests ?? []).slice(-20),
+              lastInteraction: data.state?.lastInteraction ?? []
+            },
+            apiKey,
+            AbortSignal.timeout(45000)
+          );
+        } catch (error) {
+          aiProblem = error instanceof Error ? error.message : "The AI step failed.";
+        }
+      }
+    }
+    reportField.value = formatReport(data, Boolean(screenshot), ai);
     reportSection.hidden = false;
     setStatus(
-      `Report ready: ${data.state?.errors.length ?? 0} errors and ${data.state?.requests.length ?? 0} failed requests.${screenshot ? " Screenshot captured." : " Screenshot unavailable."}`
+      `Report ready: ${data.state?.errors.length ?? 0} errors and ${data.state?.requests.length ?? 0} failed requests.${screenshot ? " Screenshot captured." : " Screenshot unavailable."}${ai ? " AI-structured." : ""}${aiProblem ? ` ${aiProblem} Used the local template instead.` : ""}`,
+      Boolean(aiProblem)
     );
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Could not generate the report.", true);
@@ -399,32 +452,41 @@ function explainError(error: CapturedError): string {
   return "The browser stopped part of the page's code because it encountered an error.";
 }
 
-function formatReport(data: ReportData, screenshotAvailable: boolean): string {
+function formatReport(data: ReportData, screenshotAvailable: boolean, ai?: AiReport): string {
   const state = data.state;
   const errors = state?.errors ?? [];
   const requests = state?.requests ?? [];
   const interaction = state?.lastInteraction ?? [];
   const primaryError = errors.find((item) => item.kind !== "console") ?? errors[0];
   const lines = [
-    `# Bug report: ${data.title || "Untitled page"}`,
+    `# ${ai ? ai.title : `Bug report: ${data.title || "Untitled page"}`}`,
     "",
+    ...(ai ? [`**Severity (AI estimate):** ${ai.severity}`, ""] : []),
     "## Summary",
-    primaryError?.message
+    ai
+      ? ai.summary
+      : primaryError?.message
       ? `The page encountered a problem: ${explainError(primaryError)}`
       : requests[0]
         ? `A network request failed: ${requests[0].method} ${requests[0].url}`
         : "Describe the unexpected behavior.",
     "",
-    "## Steps to reproduce",
-    "1. Open the page below.",
-    "2. Reproduce the issue (steps were not inferred; add the exact actions here).",
+    ...(ai ? ["## Likely cause (AI inference)", ai.likelyCause, ""] : []),
+    ai ? "## Steps to reproduce (inferred by AI; verify before filing)" : "## Steps to reproduce",
+    ...(ai
+      ? ai.stepsToReproduce.map((step, index) => `${index + 1}. ${step}`)
+      : [
+          "1. Open the page below.",
+          "2. Reproduce the issue (steps were not inferred; add the exact actions here)."
+        ]),
     "",
     "## Expected behavior",
-    "Describe what you expected to happen.",
+    ai ? ai.expectedBehavior : "Describe what you expected to happen.",
     "",
     "## Actual behavior",
-    "Describe what happened instead.",
+    ai ? ai.actualBehavior : "Describe what happened instead.",
     "",
+    ...(ai?.suspectedAreas.length ? ["## Suspected areas (AI inference)", ...ai.suspectedAreas.map((item) => `- ${item}`), ""] : []),
     "## What the captured error means",
     ...(errors.length
       ? errors.map((item) => `- ${explainError(item)} (Technical detail: ${item.message})`)
@@ -469,6 +531,10 @@ function formatReport(data: ReportData, screenshotAvailable: boolean): string {
   ];
   return lines.join("\n");
 }
+
+aiEnabled.addEventListener("change", saveAiSettings);
+aiKey.addEventListener("change", saveAiSettings);
+loadAiSettings();
 
 startButton.addEventListener("click", () => void startCapture());
 generateButton.addEventListener("click", () => void generateReport());
